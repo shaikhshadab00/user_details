@@ -1,0 +1,6 @@
+name = User Details 
+description = Provides a user details features.
+core = 7.x
+package = Custom
+dependencies[] =  user_details_db_creation
+dependencies[] =  views_ui

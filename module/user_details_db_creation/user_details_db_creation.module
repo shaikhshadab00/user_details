@@ -1,0 +1,8 @@
+<?php
+
+/**
+ * @file
+ * Code for the User details DB Creation feature.
+ */
+
+include_once 'user_details_db_creation.features.inc';

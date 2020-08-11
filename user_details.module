@@ -1,0 +1,286 @@
+<?php
+
+/**
+ * @file
+ * Fetaures for user details
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function user_details_menu() {
+  $items['user-details/dashboard'] = array(
+    'title' => 'User Details Dashboard',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('user_details_dashboard_form'),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+    'file' => 'include/user_details_dashboard.inc',	 // don't forget to add the file and path
+		'file path' => drupal_get_path('module', 'user_details'),
+  );
+  $items['user-details/dashboard/download-csv'] = array(
+    'title' => t('User details data export'),
+    'page callback' => 'user_details_dashboard_download_csv',
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_CALLBACK,
+    'file' => 'include/user_details_dashboard_download_csv.inc',	 // don't forget to add the file and path
+		'file path' => drupal_get_path('module', 'user_details'),
+  );
+  $items['user-details/upload-csv'] = array(
+    'title' => t('User details data import'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('user_details_upload_csv_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_CALLBACK,
+    'file' => 'include/user_details_upload_csv.inc',	 // don't forget to add the file and path
+		'file path' => drupal_get_path('module', 'user_details'),
+  );
+  $items['user-details/upload-csv/format'] = array(
+    'title' => t('User details data improt format'),
+    'page callback' => 'user_details_upload_csv_format',
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_CALLBACK,
+    'file' => 'include/user_details_upload_csv_format.inc',	 // don't forget to add the file and path
+		'file path' => drupal_get_path('module', 'user_details'),
+  );
+
+
+  return $items;
+}
+
+/**
+ * Implements hook_form_form_id_alter.
+ */
+function user_details_form_user_details_node_form_alter(&$form, &$form_state) {
+  $form['title']['#required'] = FALSE;
+  $form['title']['#access'] = FALSE;
+
+  $form['#validate'][] = 'user_details_form_validate_handler';
+}
+
+/**
+ * Custom validate handler
+ */
+function user_details_form_validate_handler($form, &$form_state) {
+  $mobile_number = !empty($form_state['values']['field_user_mobile_no']['und'][0]['value']) ? $form_state['values']['field_user_mobile_no']['und'][0]['value'] : '';
+  $email_id = !empty($form_state['values']['field_user_email_id']['und'][0]['value']) ? $form_state['values']['field_user_email_id']['und'][0]['value'] : '';
+  $node = is_object($form_state['node']) ? $form_state['node'] : new stdClass();
+
+  $saved_mobile_number = !empty($node->field_user_mobile_no['und'][0]['value']) ? $node->field_user_mobile_no['und'][0]['value'] : '';
+  $saved_email_id = !empty($node->field_user_email_id['und'][0]['value']) ? $node->field_user_email_id['und'][0]['value'] : '';
+
+  form_set_value($form['title'], $email_id, $form_state);
+
+  // Validate mobile number
+  if (!empty($mobile_number) && $mobile_number != $saved_mobile_number) {
+    $is_mobile_no_exist = user_details_is_value_exist('field_user_mobile_no', $mobile_number, 'user_details');
+    if (!empty($is_mobile_no_exist)) {
+      form_set_error('field_user_mobile_no', 'Mobile no field value is already used.');
+    }
+  }
+
+  // Validate Email id
+  if (!empty($email_id) && $email_id != $saved_email_id) {
+    $is_email_id_exist = user_details_is_value_exist('field_user_email_id', $email_id, 'user_details');
+    if (!empty($is_email_id_exist)) {
+      form_set_error('field_user_email_id', 'Email id field value is already used.');
+    }
+  }
+  if (!valid_email_address($email_id)) {
+    form_set_error('field_user_email_id', t('The email address appears to be invalid.'));
+  }
+}
+
+/**
+ * Helper function to check value already exist in node
+ */
+function user_details_is_value_exist($field_name, $value, $bundle) {
+  $entity_id = '';
+  $field_data_field_name = 'field_data_' . $field_name;
+  $field_name_value = $field_name . '_value';
+
+  if (!empty($field_name) && !empty($value) && db_table_exists($field_data_field_name)) {
+    $result = db_select($field_data_field_name, 'fdfn');
+    $result->fields('fdfn', array('entity_id'));
+    $result->condition($field_name_value, $value);
+    $result->condition('entity_type', 'node');
+    $result->condition('bundle', $bundle);
+    $entity_id = $result->execute()->fetchField();
+  }
+
+  return $entity_id;
+}
+
+/**
+ * Helper function to get user details dashboard data
+ */
+function user_details_get_user_details_dashboard_data($header, $params = array()) {
+  $data = array();
+
+  $query = db_select('node', 'n');
+  $query->fields('n', array('nid'));
+  $query->condition('n.type', 'user_details');
+  $query->condition('n.status', '1');
+
+  $query->leftjoin('field_data_field_user_name', 'fdfun', 'n.nid = fdfun.entity_id');
+  $query->fields('fdfun', array('field_user_name_value'));
+
+  $query->leftjoin('field_data_field_user_mobile_no', 'fdfumn', 'n.nid = fdfumn.entity_id');
+  $query->fields('fdfumn', array('field_user_mobile_no_value'));
+
+  $query->leftjoin('field_data_field_user_email_id', 'fdfumi', 'n.nid = fdfumi.entity_id');
+  $query->fields('fdfumi', array('field_user_email_id_value'));
+
+  $query->leftjoin('field_data_field_user_gender', 'fdfug', 'n.nid = fdfug.entity_id');
+  $query->fields('fdfug', array('field_user_gender_value'));
+
+  $query->leftjoin('field_data_field_user_type', 'fdfut', 'n.nid = fdfut.entity_id');
+  $query->fields('fdfut', array('field_user_type_tid'));
+
+  $query->leftjoin('field_data_field_user_app_version_log', 'fdfuavl', 'n.nid = fdfuavl.entity_id');
+  $query->fields('fdfuavl', array('field_user_app_version_log_value'));
+
+  if (!empty($params['mobile_no'])) {
+    $query->condition('fdfumn.field_user_mobile_no_value', '%' . $params['mobile_no'] . '%', 'LIKE');
+  }
+
+  if (!empty($params['name'])) {
+    $query->condition('fdfun.field_user_name_value', '%' . $params['name'] . '%', 'LIKE');
+  }
+
+  if (!empty($params['email_id'])) {
+    $query->condition('fdfumi.field_user_email_id_value', '%' . $params['email_id'] . '%', 'LIKE');
+  }
+
+  if (!empty($params['user_type'])) {
+    $query->condition('fdfut.field_user_type_tid', $params['user_type']);
+  }
+
+
+  $table_sort = $query->extend('TableSort') // Add table sort extender.
+    ->orderByHeader($header); // Add order by headers.
+
+  $pager = $table_sort->extend('PagerDefault')
+    ->limit(10); // 5 rows per page.
+
+  $result = $pager->execute()->fetchAll();
+
+  $processed_nid = array();
+  foreach ($result as $res) {
+    $node_data = array('name' => '', 'mobile_no' => '', 'email_id' => '', 'gender' => '', 'user_type' => '', 'app_log' => array());
+
+    if (!in_array($res->nid, $processed_nid)) {
+      $node_data['name'] = !empty($res->field_user_name_value) ? $res->field_user_name_value : '';
+      $node_data['mobile_no'] = !empty($res->field_user_mobile_no_value) ? $res->field_user_mobile_no_value : '';
+      $node_data['email_id'] = !empty($res->field_user_email_id_value) ? $res->field_user_email_id_value : '';
+      $node_data['gender'] = !empty($res->field_user_gender_value) ? $res->field_user_gender_value : '';
+      $node_data['user_type'] = !empty($res->field_user_type_tid) ? taxonomy_term_load($res->field_user_type_tid)->name : '';
+      $node_data['app_log'][] = !empty($res->field_user_app_version_log_value) ? user_details_get_app_version_log_from_entity($res->field_user_app_version_log_value) : '';
+
+      $data[$res->nid] = $node_data;
+      $processed_nid[$res->nid] = $res->nid;
+    } else {
+      $data[$res->nid]['app_log'][] = !empty($res->field_user_app_version_log_value) ? user_details_get_app_version_log_from_entity($res->field_user_app_version_log_value) : '';
+    }
+  }
+
+  return $data;
+}
+
+/**
+ * Helper function to generate table for user details 
+ */
+function user_details_get_user_details_dashboard_table($header, $data) {
+  $rows = array();
+  if (!empty($data)) {
+    $count = 0;
+    $hedaer_log_proccessed = FALSE;
+
+    foreach ($data as $res) {
+      $rows[$count] = array(
+        $res['name'],
+        $res['mobile_no'],
+        $res['email_id'],
+        $res['gender'],
+        $res['user_type'],
+      );
+
+      $app_version_logs = variable_get('user_details_no_of_app_version', 3);
+      $app_count = 0;
+      for ($i = 1; $i <= $app_version_logs; $i++) {
+        $rows[$count][] = !empty($res['app_log'][$app_count]['app_version']) ? $res['app_log'][$app_count]['app_version'] : '';
+        $rows[$count][] = !empty($res['app_log'][$app_count]['installed_on_date']) ? $res['app_log'][$app_count]['installed_on_date'] : '';
+        $app_count++;
+        if ($hedaer_log_proccessed == FALSE) {
+          $header[] = array('data' => t('App Version @i', array('@i' => $i)));
+          $header[] = array('data' => t('Version @i Installed', array('@i' => $i)));
+          if ($i == $app_version_logs) {
+            $hedaer_log_proccessed = TRUE;
+          }
+        }
+      }
+      $count++;
+    }
+  }
+
+  return array($rows, $header);
+}
+
+/**
+ * Helper function to get user app version log from entity id
+ */
+function user_details_get_app_version_log_from_entity($entity_id) {
+  $data = array();
+  if (is_numeric($entity_id)) {
+    $app_version_log = entity_load('field_collection_item', array($entity_id));
+    $data['app_version'] = !empty($app_version_log[$entity_id]->field_app_version['und'][0]['value']) ? $app_version_log[$entity_id]->field_app_version['und'][0]['value'] : '';
+    $data['installed_on_date'] = !empty($app_version_log[$entity_id]->field_installed_on_date['und'][0]['value']) ? date("Y-m-d H:i:s", $app_version_log[$entity_id]->field_installed_on_date['und'][0]['value']) : '';
+  }
+
+
+  return $data;
+}
+
+/**
+ * Function to get term tids from
+ * given vocab names.
+ * 
+ * @param $vocab_name
+ *  Vocabulary machine name within which
+ *  the term name exists.
+ *
+ * @return $term_ids
+ *  An array of term tids.
+ */
+function user_details_get_taxonomy_term_ids_from_vocab_name($vocab_name) {
+  $data = array();
+
+  $myvoc = taxonomy_vocabulary_machine_name_load($vocab_name);
+  $tree = taxonomy_get_tree($myvoc->vid);
+
+  foreach ($tree as $term) {
+    $data[$term->tid] = $term->name;
+  }
+
+  return $data;
+} // end of vl_util_get_taxonomy_term_ids_from_names
+
+/**
+ * Helper function to get user details node id from mobile no field 
+ */
+function user_details_get_user_details_nid_from_mobile_no($mobile_no) {
+  $nid = '';
+  if (!empty($mobile_no)) {
+
+    $query = db_select('node', 'n');
+    $query->fields('n', array('nid'));
+    $query->condition('n.type', 'user_details');
+    $query->condition('n.status', '1');
+
+    $query->leftjoin('field_data_field_user_mobile_no', 'fdfumn', 'n.nid = fdfumn.entity_id');
+    $query->condition('fdfumn.field_user_mobile_no_value', $mobile_no);
+    $nid = $query->execute()->fetchField();
+  }
+
+  return $nid;
+}

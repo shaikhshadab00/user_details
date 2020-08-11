@@ -1,0 +1,31 @@
+<?php
+
+/**
+ * @file
+ * Create term for user type
+ */
+
+ /**
+  * Implements hook_install().
+  */
+function user_details_install() {
+  user_details_create_user_type_terms();
+}
+
+function user_details_create_user_type_terms() {
+  $vocab = taxonomy_vocabulary_machine_name_load('user_types');
+
+  $terms = array('Admin', 'App', 'Editor', 'Moderator');
+
+  if (!empty($vocab) && is_numeric($vocab->vid)) {
+    foreach($terms as $term) {
+      $temp_term = (object) array(
+        'name' => $term,
+        'description' => $term,
+        'vid' => $vocab->vid,
+       );
+        
+       taxonomy_term_save($temp_term);
+    }
+  }
+}
